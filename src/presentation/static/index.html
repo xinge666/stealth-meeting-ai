@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Meeting Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+                         'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            font-size: 15px;
+            line-height: 1.6;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ─── Header ─── */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 12px 16px;
+            background: rgba(10, 10, 10, 0.92);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header .title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 0.5px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #333;
+            transition: background 0.3s;
+        }
+
+        .status-dot.connected {
+            background: #00e676;
+            box-shadow: 0 0 8px rgba(0, 230, 118, 0.5);
+        }
+
+        .status-dot.error {
+            background: #ff5252;
+            box-shadow: 0 0 8px rgba(255, 82, 82, 0.5);
+        }
+
+        /* ─── Content ─── */
+        .content {
+            padding: 60px 16px 24px;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        /* ─── Question Card ─── */
+        .question-card {
+            background: rgba(33, 33, 33, 0.7);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .question-card .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64b5f6;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .question-card .text {
+            color: #bbdefb;
+            font-size: 14px;
+        }
+
+        /* ─── Answer Card ─── */
+        .answer-card {
+            background: rgba(20, 20, 20, 0.8);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            min-height: 48px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .answer-card .answer-text {
+            color: #e8e8e8;
+            font-size: 15px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .answer-card .cursor {
+            display: inline-block;
+            width: 2px;
+            height: 16px;
+            background: #64b5f6;
+            margin-left: 2px;
+            animation: blink 0.7s infinite;
+            vertical-align: text-bottom;
+        }
+
+        /* ─── Separator ─── */
+        .separator {
+            border: none;
+            border-top: 1px solid rgba(255,255,255,0.04);
+            margin: 16px 0;
+        }
+
+        /* ─── Empty State ─── */
+        .empty-state {
+            text-align: center;
+            padding: 80px 24px;
+            color: #555;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+        }
+
+        /* ─── Animations ─── */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* ─── Scrollbar ─── */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <span class="title">📡 Meeting Assistant</span>
+        <span class="status-dot" id="statusDot"></span>
+    </div>
+
+    <div class="content" id="content">
+        <div class="empty-state" id="emptyState">
+            <div class="icon">🎙️</div>
+            <p>等待会议开始…</p>
+            <p style="margin-top: 8px; font-size: 12px; color: #444;">系统将自动检测提问并生成回答</p>
+        </div>
+    </div>
+
+    <script>
+        const content = document.getElementById('content');
+        const emptyState = document.getElementById('emptyState');
+        const statusDot = document.getElementById('statusDot');
+
+        let currentAnswerEl = null;
+        let ws = null;
+        let reconnectTimer = null;
+
+        function connect() {
+            const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+            const wsUrl = `${protocol}://${location.host}/ws`;
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusDot.className = 'status-dot connected';
+                if (reconnectTimer) {
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = null;
+                }
+            };
+
+            ws.onclose = () => {
+                statusDot.className = 'status-dot error';
+                scheduleReconnect();
+            };
+
+            ws.onerror = () => {
+                statusDot.className = 'status-dot error';
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleMessage(msg);
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+        }
+
+        function scheduleReconnect() {
+            if (!reconnectTimer) {
+                reconnectTimer = setTimeout(() => {
+                    reconnectTimer = null;
+                    connect();
+                }, 3000);
+            }
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case 'question':
+                    showQuestion(msg.text);
+                    break;
+                case 'chunk':
+                    appendChunk(msg.text);
+                    break;
+                case 'done':
+                    finishAnswer();
+                    break;
+            }
+        }
+
+        function showQuestion(text) {
+            // Hide empty state
+            if (emptyState) {
+                emptyState.style.display = 'none';
+            }
+
+            // Add separator if not the first item
+            if (content.children.length > 1 || !emptyState) {
+                const sep = document.createElement('hr');
+                sep.className = 'separator';
+                content.appendChild(sep);
+            }
+
+            // Create question card
+            const card = document.createElement('div');
+            card.className = 'question-card';
+            card.innerHTML = `
+                <div class="label">🔍 检测到提问</div>
+                <div class="text">${escapeHtml(text)}</div>
+            `;
+            content.appendChild(card);
+
+            // Create answer card with cursor
+            currentAnswerEl = document.createElement('div');
+            currentAnswerEl.className = 'answer-card';
+            currentAnswerEl.innerHTML = `<span class="answer-text"></span><span class="cursor"></span>`;
+            content.appendChild(currentAnswerEl);
+
+            // Auto-scroll
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        function appendChunk(text) {
+            if (!currentAnswerEl) return;
+            const textEl = currentAnswerEl.querySelector('.answer-text');
+            if (textEl) {
+                textEl.textContent += text;
+            }
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        function finishAnswer() {
+            if (!currentAnswerEl) return;
+            const cursor = currentAnswerEl.querySelector('.cursor');
+            if (cursor) {
+                cursor.remove();
+            }
+            currentAnswerEl = null;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>

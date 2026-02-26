@@ -1,0 +1,21 @@
+# Core
+numpy
+torch
+torchaudio
+sounddevice
+faster-whisper
+httpx
+
+# Vision
+mss
+opencv-python
+rapidocr-onnxruntime
+
+# Server
+fastapi
+uvicorn[standard]
+websockets
+
+# Testing
+pytest
+pytest-asyncio
