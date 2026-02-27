@@ -72,7 +72,7 @@ class QwenLocalASREngine(BaseASREngine):
         loop = asyncio.get_running_loop()
         try:
             text = await loop.run_in_executor(None, self._do_transcribe, audio_segment)
-            return text
+            return self._clean_text(text)
         except Exception as e:
             logger.error("Qwen Local Transcription error: %s", e)
             return ""

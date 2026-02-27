@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Meeting AI Assistant</title>
+    <title>Meeting AI Assistant - Stealth Mod</title>
     <style>
         :root {
             --bg-color: #050505;
@@ -15,59 +15,75 @@
             --text-dim: #999;
             --accent-blue: #2196f3;
             --accent-green: #00e676;
+            --q-color: #ffcc00;
+            --a-color: #00e676;
+            --trans-color: #aaa;
+            --llm-raw-color: #4a9eff;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
+        /* Discreet Finish Button */
+        .finish-fab {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-dim);
+            border: 0.5px solid var(--border-color);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 9px;
+            font-weight: 700;
+            cursor: pointer;
+            z-index: 1500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+            opacity: 0.5;
+        }
+
+        .finish-fab:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            opacity: 1;
         }
 
         body {
             background: var(--bg-color);
             color: var(--text-main);
             font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
-            font-size: 15px;
+            font-size: 14px;
             line-height: 1.6;
-            min-height: 100vh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
 
         /* ─── Header ─── */
         header {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            height: 56px;
+            height: 48px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 0 16px;
-            background: rgba(5, 5, 5, 0.85);
-            backdrop-filter: blur(20px) saturate(180%);
-            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            background: rgba(5, 5, 5, 0.9);
+            backdrop-filter: blur(20px);
             border-bottom: 0.5px solid var(--border-color);
             z-index: 1000;
         }
 
         .logo {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 700;
-            background: linear-gradient(135deg, #fff 0%, #aaa 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            letter-spacing: -0.2px;
+            letter-spacing: 1px;
+            color: var(--text-dim);
         }
 
         .status {
             display: flex;
             align-items: center;
-            font-size: 11px;
+            font-size: 10px;
             color: var(--text-dim);
-            font-weight: 500;
         }
 
         .status-dot {
@@ -76,122 +92,100 @@
             border-radius: 50%;
             margin-right: 6px;
             background: #444;
-            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05);
         }
 
         .status-dot.online {
             background: var(--accent-green);
-            box-shadow: 0 0 10px rgba(0, 230, 118, 0.4);
+            box-shadow: 0 0 8px var(--accent-green);
         }
 
-        /* ─── Main Content ─── */
+        /* ─── 3 Column Layout ─── */
         main {
             flex: 1;
-            padding: 72px 16px 40px;
-            max-width: 680px;
-            margin: 0 auto;
-            width: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1.2fr 1.5fr;
+            gap: 1px;
+            background: var(--border-color);
+            overflow: hidden;
         }
 
-        #chat-container {
+        .column {
+            background: var(--bg-color);
             display: flex;
             flex-direction: column;
-            gap: 24px;
-        }
-
-        /* ─── Cards ─── */
-        .card {
-            background: var(--surface-color);
-            border-radius: 14px;
-            border: 0.5px solid var(--border-color);
+            position: relative;
             overflow: hidden;
-            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         }
 
-        .question-part {
-            padding: 14px 16px;
-            background: rgba(255, 255, 255, 0.02);
-            border-bottom: 0.5px solid var(--border-color);
-        }
-
-        .q-label {
+        .col-header {
+            padding: 10px 16px;
             font-size: 10px;
             font-weight: 700;
-            color: var(--primary-color);
+            color: var(--text-dim);
+            border-bottom: 0.5px solid var(--border-color);
             text-transform: uppercase;
-            margin-bottom: 4px;
             letter-spacing: 0.5px;
+            background: rgba(255, 255, 255, 0.02);
         }
 
-        .q-text {
-            font-size: 15px;
-            font-weight: 500;
-            color: #fff;
+        .scroll-area {
+            flex: 1;
+            padding: 12px 16px;
+            overflow-y: auto;
+            position: relative;
+            font-variant-numeric: tabular-nums;
         }
 
-        .answer-part {
-            padding: 16px;
+        /* ─── Column Styles ─── */
+        .trans-text {
+            color: var(--trans-color);
+            font-size: 13px;
         }
 
-        .a-text {
-            font-size: 15px;
+        .llm-raw-text {
+            color: var(--llm-raw-color);
+            font-size: 13px;
+        }
+
+        .qa-area {
+            color: var(--text-main);
+            font-size: 14px;
+        }
+
+        .qa-item {
+            margin-bottom: 12px;
+        }
+
+        .q-line {
+            color: var(--q-color);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .a-line {
+            color: var(--a-color);
+            white-space: pre-wrap;
+        }
+
+        /* ─── Line Logic (Sliding Window) ─── */
+        .text-content {
+            display: block;
             white-space: pre-wrap;
             word-break: break-word;
-            color: #d1d1d1;
+            line-height: 1.8;
+            max-height: calc(14px * 1.8 * 10);
+            /* 10 lines */
+            transition: opacity 0.2s ease;
         }
 
         .cursor {
             display: inline-block;
             width: 2px;
-            height: 15px;
+            height: 14px;
             background: var(--primary-color);
             margin-left: 2px;
             vertical-align: middle;
             animation: blink 1s infinite step-end;
-        }
-
-        /* ─── States ─── */
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 120px 20px;
-            color: #333;
-            transition: opacity 0.3s;
-        }
-
-        .empty-state.hidden {
-            display: none;
-        }
-
-        .loader-ring {
-            width: 48px;
-            height: 48px;
-            margin-bottom: 24px;
-            border: 2px solid rgba(255, 255, 255, 0.05);
-            border-top-color: var(--primary-color);
-            border-radius: 50%;
-            animation: spin 1s infinite linear;
-        }
-
-        /* ─── Animations ─── */
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(12px) scale(0.98);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
         }
 
         @keyframes blink {
@@ -200,19 +194,23 @@
             }
         }
 
-        /* ─── Footer ─── */
-        footer {
-            padding: 24px;
-            text-align: center;
-            font-size: 11px;
-            color: #333;
+        /* ─── Responsive ─── */
+        @media (max-width: 900px) {
+            main {
+                grid-template-columns: 1fr;
+                grid-template-rows: 1fr 1fr 1fr;
+            }
+
+            .column {
+                border-bottom: 1px solid var(--border-color);
+            }
         }
     </style>
 </head>
 
 <body>
     <header>
-        <div class="logo">MEETING AI</div>
+        <div class="logo">MEETING AI STEALTH</div>
         <div class="status">
             <div class="status-dot" id="dot"></div>
             <span id="status-text">DISCONNECTED</span>
@@ -220,121 +218,120 @@
     </header>
 
     <main>
-        <div id="empty" class="empty-state">
-            <div class="loader-ring"></div>
-            <p>Waiting for meeting signals...</p>
+        <!-- Column 1: ASR Transcription -->
+        <div class="column">
+            <div class="col-header">Real-time Transcription</div>
+            <div class="scroll-area">
+                <div id="trans-area" class="text-content trans-text"></div>
+            </div>
         </div>
-        <div id="chat-container"></div>
+
+        <!-- Column 2: Raw LLM Output -->
+        <div class="column">
+            <div class="col-header">LLM Stream</div>
+            <div class="scroll-area">
+                <div id="llm-raw-area" class="text-content llm-raw-text"></div>
+                <span id="llm-cursor" class="cursor"></span>
+            </div>
+        </div>
+
+        <!-- Column 3: Structured Q&A -->
+        <div class="column">
+            <div class="col-header">Question & Answer</div>
+            <div class="scroll-area" id="qa-scroll">
+                <div id="qa-area" class="text-content"></div>
+                <span id="qa-cursor" class="cursor"></span>
+            </div>
+        </div>
     </main>
 
-    <footer id="footer">
-        POWERED BY DEEPSEEK & QWEN
-    </footer>
-
     <script>
-        const chatContainer = document.getElementById('chat-container');
-        const emptyState = document.getElementById('empty');
+        const transEl = document.getElementById('trans-area');
+        const llmRawEl = document.getElementById('llm-raw-area');
+        const qaEl = document.getElementById('qa-area');
         const statusDot = document.getElementById('dot');
         const statusText = document.getElementById('status-text');
 
         let ws = null;
-        let lastAnswerTextEl = null;
-        let isUserScrolling = false;
-
-        // Auto-scroll logic to prevent jumping when reading
-        window.addEventListener('scroll', () => {
-            const atBottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 50;
-            isUserScrolling = !atBottom;
-        });
-
-        function maybeScroll() {
-            if (!isUserScrolling) {
-                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-            }
-        }
+        let currentQuestion = "";
+        let currentAnswer = "";
 
         function setStatus(online) {
             statusDot.className = online ? 'status-dot online' : 'status-dot';
             statusText.textContent = online ? 'LIVE' : 'RECONNECTING...';
         }
 
-        function createNewQA(questionText) {
-            emptyState.classList.add('hidden');
-
-            const card = document.createElement('div');
-            card.className = 'card';
-            card.innerHTML = `
-                <div class="question-part">
-                    <div class="q-label">QUESTION</div>
-                    <div class="q-text">${escapeHtml(questionText)}</div>
-                </div>
-                <div class="answer-part">
-                    <div class="a-text"></div>
-                    <span class="cursor"></span>
-                </div>
-            `;
-            chatContainer.appendChild(card);
-            lastAnswerTextEl = card.querySelector('.a-text');
-            maybeScroll();
-            return card;
-        }
-
         function handleMessage(msg) {
-            if (msg.type === 'sync') {
-                chatContainer.innerHTML = '';
-                if (msg.history && msg.history.length > 0) {
-                    emptyState.classList.add('hidden');
-                    let currentCard = null;
-                    msg.history.forEach(item => {
-                        if (item.type === 'question') {
-                            currentCard = createNewQA(item.text);
-                        } else if (item.type === 'answer' && lastAnswerTextEl) {
-                            lastAnswerTextEl.textContent = item.text;
-                            finishAnswer();
-                        }
-                    });
-                }
-                if (msg.current_chunk) {
-                    if (!lastAnswerTextEl) {
-                        // This case happens if a sync happens mid-answer but the question event was in history
-                        // createNewQA was already called above if history had the question.
-                    }
-                    if (lastAnswerTextEl) {
-                        lastAnswerTextEl.textContent = msg.current_chunk;
-                        maybeScroll();
-                    }
-                }
-                return;
-            }
-
             switch (msg.type) {
+                case 'transcription':
+                    appendText(transEl, msg.text + " ");
+                    break;
                 case 'question':
-                    createNewQA(msg.text);
+                    currentQuestion = msg.text;
+                    currentAnswer = "";
+                    appendText(llmRawEl, "\n[Q] " + msg.text + "\n");
+                    updateQAColumn(true);
                     break;
                 case 'chunk':
-                    if (lastAnswerTextEl) {
-                        lastAnswerTextEl.textContent += msg.text;
-                        maybeScroll();
-                    }
+                    currentAnswer += msg.text;
+                    appendText(llmRawEl, msg.text);
+                    updateQAColumn(false);
                     break;
                 case 'done':
-                    finishAnswer();
+                    updateQAColumn(false);
+                    appendText(llmRawEl, "\n---");
+                    break;
+                case 'analysis_report':
+                    renderAnalysisReport(msg.report);
                     break;
             }
         }
 
-        function finishAnswer() {
-            if (!lastAnswerTextEl) return;
-            const card = lastAnswerTextEl.closest('.card');
-            const cursor = card ? card.querySelector('.cursor') : null;
-            if (cursor) cursor.remove();
-            lastAnswerTextEl = null;
+        function finishAndAnalyze() {
+            if (confirm("确定要结束会议并生成复盘文档吗？")) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'FINISH_AND_ANALYZE' }));
+                    alert("会议已结束，复盘报告正在生成中，请在 server 端的 reports/ 目录下查看。");
+                }
+            }
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        function appendText(el, text) {
+            el.textContent += text;
+            checkPaging(el);
+            // Auto scroll container
+            el.parentElement.scrollTop = el.parentElement.scrollHeight;
+        }
+
+        function updateQAColumn(newQuestion) {
+            const qStr = currentQuestion ? "Q: " + currentQuestion + "\n" : "";
+            const aStr = currentAnswer ? "A: " + currentAnswer : "";
+            qaEl.textContent = qStr + aStr;
+            checkPaging(qaEl);
+            qaEl.parentElement.scrollTop = qaEl.parentElement.scrollHeight;
+        }
+
+        function checkPaging(el) {
+            // Split into lines
+            let content = el.textContent;
+            let lines = content.split('\n');
+
+            // If total lines > 10, we "page"
+            // We want to keep the last 10 lines, but according to user:
+            // "按行滚动 只保留最新的 n 行"
+            // "每次 写满10 行了 就切掉 （保留最下面一行 可以理解为翻页操作）"
+
+            if (lines.length > 10) {
+                // User wants to keep the last line as context
+                const lastLine = lines[lines.length - 1];
+                // Reset content to just the last line or just empty if we want extreme cut
+                // Let's follow "保留最下面一行"
+                el.style.opacity = '0';
+                setTimeout(() => {
+                    el.textContent = lastLine;
+                    el.style.opacity = '1';
+                }, 100);
+            }
         }
 
         function connect() {
@@ -356,6 +353,7 @@
 
         connect();
     </script>
+    <button class="finish-fab" onclick="finishAndAnalyze()">End Meeting</button>
 </body>
 
 </html>

@@ -108,3 +108,60 @@ class LLMClient:
 
         logger.info("LLM response completed (%d chars)", len(complete_text))
         return complete_text
+
+    async def analyze_intent(self, text: str, history: str = "") -> dict:
+        """
+        Analyze the intent of ASR text using a non-streaming LLM call.
+        Returns a dict with classification and extraction results.
+        Incorporates conversation history for context-aware extraction.
+        """
+        if not self._client or not self.config.api_key:
+            return {"is_question": False, "extracted_question": "", "confidence": 0.0}
+
+        history_block = f"\n[最近对话上下文]:\n{history}\n" if history else ""
+
+        prompt = f"""
+你是一个面试助手。请分析以下经过语音识别（ASR）的文本片段：
+---
+"{text}"
+---
+{history_block}
+任务要求：
+1. 判断这是否是一个需要你（AI）作为面试官或专家进行回答的实质性技术问题或业务问题。
+2. 结合【最近对话上下文】，如果当前文本包含指代（如“它”、“那个”、“刚才说的”），请在提取时将其还原为具体的主体。
+3. 如果包含“废话、口头禅（呃、那个、嗯）、单纯的寒暄（你好、大家好）”但同时也包含问题，请将问题提取出来并进行语言清洗（变得书面化、清晰）。
+4. 如果这只是单纯的噪音、闲聊、废话或不完整的句子，请判定为非问题。
+
+请严格返回 JSON 格式，不要有任何其他文字：
+{{
+  "is_question": boolean, // 是否是实质性问题
+  "extracted_question": string, // 结合上下文还原并清洗后的完整问题文本
+  "confidence": number // 0.0 到 1.0 的置信度
+}}
+"""
+        payload = {
+            "model": self.config.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 150,
+            "temperature": 0.1,
+            "stream": False,
+        }
+
+        try:
+            response = await self._client.post("/chat/completions", json=payload)
+            response.raise_for_status()
+            data = response.json()
+            content = data["choices"][0]["message"]["content"]
+            
+            # Extract JSON from potential markdown blocks
+            json_str = content.strip()
+            if "```json" in json_str:
+                json_str = json_str.split("```json")[1].split("```")[0].strip()
+            elif "```" in json_str:
+                json_str = json_str.split("```")[1].split("```")[0].strip()
+            
+            result = json.loads(json_str)
+            return result
+        except Exception as e:
+            logger.error("Intent analysis LLM error: %s", e)
+            return {"is_question": False, "extracted_question": "", "confidence": 0.0}

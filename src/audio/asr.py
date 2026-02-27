@@ -51,7 +51,7 @@ class WhisperASREngine(BaseASREngine):
 
         loop = asyncio.get_running_loop()
         text = await loop.run_in_executor(None, self._do_transcribe, audio_segment)
-        return text
+        return self._clean_text(text)
 
     def _do_transcribe(self, audio_data: np.ndarray) -> str:
         """Synchronous transcription (runs in thread pool)."""
