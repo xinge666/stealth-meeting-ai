@@ -34,6 +34,7 @@ class WebSocketServer:
         self._active_connections: Set[WebSocket] = set()
         self._history = []  # List of dicts: {"type": "question"|"answer", "text": str}
         self._current_answer_buffer = ""
+        self._on_finish_callback = None
 
         self._setup_routes()
 
@@ -41,6 +42,7 @@ class WebSocketServer:
         self.bus.subscribe(EventType.LLM_RESPONSE_CHUNK, self._handle_chunk)
         self.bus.subscribe(EventType.LLM_RESPONSE_DONE, self._handle_done)
         self.bus.subscribe(EventType.INTENT_QUESTION, self._handle_question)
+        self.bus.subscribe(EventType.SPEECH_TEXT, self._handle_speech)
 
     def _setup_routes(self):
         """Configure FastAPI routes."""
@@ -72,10 +74,22 @@ class WebSocketServer:
             logger.info("Client connected. Total: %d", len(self._active_connections))
             try:
                 while True:
-                    await websocket.receive_text()
+                    data = await websocket.receive_text()
+                    try:
+                        msg = json.loads(data)
+                        if msg.get("type") == "FINISH_AND_ANALYZE":
+                            logger.info("Received FINISH_AND_ANALYZE request from UI")
+                            if self._on_finish_callback:
+                                asyncio.create_task(self._on_finish_callback())
+                    except Exception:
+                        pass
             except WebSocketDisconnect:
                 self._active_connections.discard(websocket)
                 logger.info("Client disconnected. Total: %d", len(self._active_connections))
+
+    def set_on_finish_callback(self, callback):
+        """Set a callback for when the user ends the meeting for analysis."""
+        self._on_finish_callback = callback
 
     async def _broadcast(self, message: dict):
         """Send a JSON message to all connected clients."""
@@ -111,6 +125,15 @@ class WebSocketServer:
             "type": "chunk",
             "text": chunk,
         })
+
+    async def _handle_speech(self, event: Event):
+        """Broadcast ASR results."""
+        text = event.data.get("text", "")
+        if text:
+            await self._broadcast({
+                "type": "transcription",
+                "text": text,
+            })
 
     async def _handle_done(self, event: Event):
         """Broadcast LLM response completion and move buffer to history."""

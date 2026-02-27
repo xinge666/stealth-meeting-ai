@@ -5,6 +5,7 @@ All settings loaded from environment variables with sensible defaults.
 
 import os
 from dataclasses import dataclass, field
+from dotenv import load_dotenv
 
 
 @dataclass
@@ -14,7 +15,7 @@ class AudioConfig:
     sample_rate: int = 16000
     chunk_duration_ms: int = 32  # 512 samples at 16kHz = 32ms
     vad_threshold: float = 0.5
-    silence_timeout: float = 1.5  # seconds of silence to finalize segment
+    silence_timeout: float = 0.8  # seconds of silence to finalize segment (reduced from 1.5 for faster response)
     device_name: str = ""  # empty = default mic; set to "BlackHole" for system audio
     
     # Whisper specific
@@ -64,18 +65,31 @@ class AppConfig:
     audio: AudioConfig = field(default_factory=AudioConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
+    flash_llm: LLMConfig = field(default_factory=LLMConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
     max_conversation_history: int = 20  # sliding window size
 
     @classmethod
     def from_env(cls) -> "AppConfig":
-        """Load configuration from environment variables."""
+        """Load configuration from environment variables (including .env file)."""
+        load_dotenv()
         config = cls()
 
-        # LLM config
+        # LLM config (Primary/Max)
         config.llm.api_key = os.getenv("LLM_API_KEY", config.llm.api_key)
         config.llm.base_url = os.getenv("LLM_BASE_URL", config.llm.base_url)
         config.llm.model = os.getenv("LLM_MODEL", config.llm.model)
+
+        # LLM config (Flash)
+        config.flash_llm.api_key = os.getenv("LLM_FLASH_API_KEY", config.llm.api_key)
+        config.flash_llm.base_url = os.getenv("LLM_FLASH_BASE_URL", config.llm.base_url)
+        config.flash_llm.model = os.getenv("LLM_FLASH_MODEL", "qwen-turbo")
+
+        # Server config
+        config.server.host = os.getenv("SERVER_HOST", config.server.host)
+        port = os.getenv("SERVER_PORT")
+        if port:
+            config.server.port = int(port)
 
         # Audio config
         config.audio.engine_type = os.getenv("ASR_ENGINE", config.audio.engine_type)
@@ -85,6 +99,10 @@ class AppConfig:
         config.audio.qwen_api_model = os.getenv("QWEN_API_MODEL", config.audio.qwen_api_model)
         config.audio.qwen_local_model_path = os.getenv("QWEN_LOCAL_MODEL_PATH", config.audio.qwen_local_model_path)
         config.audio.qwen_local_device = os.getenv("QWEN_LOCAL_DEVICE", config.audio.qwen_local_device)
+        
+        silence_timeout = os.getenv("SILENCE_TIMEOUT")
+        if silence_timeout:
+            config.audio.silence_timeout = float(silence_timeout)
 
         # Vision config
         config.vision.engine_type = os.getenv("VISION_ENGINE", config.vision.engine_type)

@@ -22,7 +22,7 @@ _ZH_QUESTION_WORDS = [
     "谁", "几个", "几种", "多少", "是否", "能否", "可以吗", "对吗", "吗",
     "呢", "请问", "请说", "请介绍", "请解释", "请讲", "请描述",
     "区别", "优缺点", "优势", "劣势", "差异", "对比", "比较",
-    "举例", "说一下", "讲一下", "聊一下", "谈谈", "解释一下",
+    "举例", "说一下", "讲一下", "聊一下", "谈谈", "解释一下", "什么是", "聊聊", "说说", "的作用", "的原理",
 ]
 
 # English question indicators
@@ -45,12 +45,14 @@ _NOISE_RE = [re.compile(p, re.IGNORECASE) for p in _NOISE_PATTERNS]
 
 class IntentRouter:
     """
-    Classifies incoming ASR text as question or noise.
+    Classifies incoming ASR text as question or noise using LLM.
     Subscribes to SPEECH_TEXT events and publishes INTENT_QUESTION events.
     """
 
-    def __init__(self, event_bus: EventBus, min_length: int = 4):
+    def __init__(self, event_bus: EventBus, llm_client: "LLMClient", context_manager: "ContextManager", min_length: int = 4):
         self.bus = event_bus
+        self.llm = llm_client
+        self.context = context_manager
         self.min_length = min_length
         # Register as subscriber
         self.bus.subscribe(EventType.SPEECH_TEXT, self._handle_speech)
@@ -66,52 +68,27 @@ class IntentRouter:
 
         # Skip very short text
         if len(text) < self.min_length:
-            logger.debug("Text too short, skipping: '%s'", text)
             return
 
-        # Check if it's a question
-        confidence = self._classify(text)
+        # Get recent history for coreference resolution
+        history = self.context.get_recent_history(limit=5)
 
-        if confidence > 0.4:
+        # Use LLM for precise classification and extraction
+        result = await self.llm.analyze_intent(text, history=history)
+        
+        is_question = result.get("is_question", False)
+        extracted_text = result.get("extracted_question", "").strip()
+        confidence = result.get("confidence", 0.0)
+
+        if is_question and extracted_text and confidence >= 0.6:
             logger.info(
-                "✅ Question detected (conf=%.2f): %s", confidence, text[:80]
+                "✅ [LLM Intent] Question detected (conf=%.2f): %s", 
+                confidence, extracted_text[:80]
             )
-            await self.bus.publish(intent_event(text, confidence))
+            # Publish the CLEANED question text
+            await self.bus.publish(intent_event(extracted_text, confidence))
         else:
             logger.debug(
-                "❌ Filtered as non-question (conf=%.2f): %s", confidence, text[:80]
+                "❌ [LLM Intent] Filtered (conf=%.2f): %s", 
+                confidence, text[:80]
             )
-
-    def _classify(self, text: str) -> float:
-        """
-        Score how likely the text is a question (0.0 to 1.0).
-        Uses keyword matching and structural heuristics.
-        """
-        score = 0.0
-        text_lower = text.lower()
-
-        # Check noise patterns first — strong negative signal
-        for pattern in _NOISE_RE:
-            if pattern.search(text_lower):
-                score -= 0.3
-
-        # Check for question mark (strong positive signal)
-        if "？" in text or "?" in text:
-            score += 0.5
-
-        # Check Chinese question words
-        zh_matches = sum(1 for w in _ZH_QUESTION_WORDS if w in text)
-        score += min(zh_matches * 0.2, 0.5)
-
-        # Check English question words
-        en_matches = sum(1 for w in _EN_QUESTION_WORDS if w in text_lower)
-        score += min(en_matches * 0.2, 0.5)
-
-        # Length bonus: longer sentences are more likely real questions
-        if len(text) > 15:
-            score += 0.1
-        if len(text) > 30:
-            score += 0.1
-
-        # Clamp to [0, 1]
-        return max(0.0, min(1.0, score))

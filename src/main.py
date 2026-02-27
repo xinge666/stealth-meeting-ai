@@ -13,7 +13,8 @@ from .event_bus import EventBus, speech_event, screen_event
 from .audio.capture import AudioCapture
 from .audio.capture import AudioCapture
 from .intelligence.intent_router import IntentRouter
-from .intelligence.context_aggregator import ContextAggregator
+from .context import ContextManager
+from .analytics.meeting_analyzer import MeetingAnalyzer
 from .intelligence.llm_client import LLMClient
 from .vision.screen_capture import ScreenCapture
 from .presentation.server import WebSocketServer
@@ -53,16 +54,30 @@ async def main():
     llm = LLMClient(config.llm, bus)
     await llm.initialize()
 
+    flash_llm = LLMClient(config.flash_llm, bus)
+    await flash_llm.initialize()
+
     # ── 2. Wire up intelligence layer ──────────────────────────
-    intent_router = IntentRouter(bus)
-    context_agg = ContextAggregator(bus, max_history=config.max_conversation_history)
+    context_mgr = ContextManager(bus, max_history=config.max_conversation_history)
+    intent_router = IntentRouter(bus, flash_llm, context_mgr)
 
     # When a question is detected → ask the LLM
     async def on_question(prompt: str, question: str):
         logger.info("🧠 Sending to LLM: %s", question[:60])
         await llm.ask(prompt, question)
 
-    context_agg.set_question_callback(on_question)
+    context_mgr.set_question_callback(on_question)
+
+    # Setup Review/Analysis
+    analyzer = MeetingAnalyzer(llm)
+
+    async def on_finish():
+        logger.info("🏁 Meeting finished. Generating review report...")
+        history = context_mgr.get_full_history()
+        report = await analyzer.analyze(history)
+        logger.info("✅ Report generated successfully.")
+
+    ws_server.set_on_finish_callback(on_finish)
 
     # ── 3. Wire up audio pipeline ──────────────────────────────
     async def on_speech_segment(audio_data):
