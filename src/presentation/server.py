@@ -32,6 +32,8 @@ class WebSocketServer:
         self.bus = event_bus
         self.app = FastAPI(title="Meeting Assistant", docs_url=None)
         self._active_connections: Set[WebSocket] = set()
+        self._history = []  # List of dicts: {"type": "question"|"answer", "text": str}
+        self._current_answer_buffer = ""
 
         self._setup_routes()
 
@@ -57,20 +59,23 @@ class WebSocketServer:
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):
             await websocket.accept()
+            
+            # 1. Sync history and current state to the new client
+            sync_payload = {
+                "type": "sync",
+                "history": self._history,
+                "current_chunk": self._current_answer_buffer
+            }
+            await websocket.send_text(json.dumps(sync_payload, ensure_ascii=False))
+
             self._active_connections.add(websocket)
-            logger.info(
-                "Client connected. Total: %d", len(self._active_connections)
-            )
+            logger.info("Client connected. Total: %d", len(self._active_connections))
             try:
                 while True:
-                    # Keep connection alive; we don't expect client messages
                     await websocket.receive_text()
             except WebSocketDisconnect:
                 self._active_connections.discard(websocket)
-                logger.info(
-                    "Client disconnected. Total: %d",
-                    len(self._active_connections)
-                )
+                logger.info("Client disconnected. Total: %d", len(self._active_connections))
 
     async def _broadcast(self, message: dict):
         """Send a JSON message to all connected clients."""
@@ -86,22 +91,33 @@ class WebSocketServer:
         self._active_connections -= disconnected
 
     async def _handle_question(self, event: Event):
-        """Broadcast the detected question to clients."""
+        """Broadcast the detected question to clients and save to history."""
+        text = event.data.get("text", "")
+        self._history.append({"type": "question", "text": text})
+        # Reset answer buffer for new question
+        self._current_answer_buffer = ""
+        
         await self._broadcast({
             "type": "question",
-            "text": event.data.get("text", ""),
+            "text": text,
             "confidence": event.data.get("confidence", 0),
         })
 
     async def _handle_chunk(self, event: Event):
-        """Broadcast an LLM response chunk."""
+        """Broadcast an LLM response chunk and append to buffer."""
+        chunk = event.data.get("chunk", "")
+        self._current_answer_buffer += chunk
         await self._broadcast({
             "type": "chunk",
-            "text": event.data.get("chunk", ""),
+            "text": chunk,
         })
 
     async def _handle_done(self, event: Event):
-        """Broadcast LLM response completion."""
+        """Broadcast LLM response completion and move buffer to history."""
+        if self._current_answer_buffer:
+            self._history.append({"type": "answer", "text": self._current_answer_buffer})
+            # We don't clear buffer here so re-connecting clients can still see the last answer
+            # It will be cleared on the next question.
         await self._broadcast({
             "type": "done",
         })

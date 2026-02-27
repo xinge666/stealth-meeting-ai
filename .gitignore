@@ -164,6 +164,10 @@ cython_debug/
 # VS Code
 .vscode/
 
+# Qwen3-ASR
+Qwen3-ASR-*/
+src/audio/Qwen3-ASR/
+
 # Local configuration
 .env.local
 .env.*.local

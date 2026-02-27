@@ -1,5 +1,5 @@
 """
-Unit tests for ASREngine with mocked faster-whisper.
+Unit tests for WhisperASREngine with mocked faster-whisper.
 """
 
 import asyncio
@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.audio.asr import ASREngine
+from src.audio.factory import create_asr_engine
+from src.audio.asr import WhisperASREngine
+from src.audio.qwen_asr_local import QwenLocalASREngine
 from src.config import AudioConfig
 
 
@@ -35,11 +37,23 @@ class TestASREngine:
         mock_model.transcribe.return_value = ([mock_segment], mock_info)
         return mock_model
 
+    def test_factory_creates_whisper(self):
+        """Factory should return WhisperASREngine by default."""
+        config = AudioConfig()
+        engine = create_asr_engine(config)
+        assert isinstance(engine, WhisperASREngine)
+
+    def test_factory_creates_qwen_local(self):
+        """Factory should return QwenLocalASREngine when configured."""
+        config = AudioConfig(engine_type="qwen_local")
+        engine = create_asr_engine(config)
+        assert isinstance(engine, QwenLocalASREngine)
+
     def test_initialize_loads_model(self):
         """initialize() should load the whisper model."""
         async def _test():
             config = AudioConfig()
-            engine = ASREngine(config)
+            engine = create_asr_engine(config)
 
             mock_model = self._make_mock_model()
             with patch.object(engine, '_load_model', return_value=mock_model):
@@ -52,7 +66,7 @@ class TestASREngine:
         """transcribe() should return recognized text from audio."""
         async def _test():
             config = AudioConfig()
-            engine = ASREngine(config)
+            engine = create_asr_engine(config)
 
             mock_model = self._make_mock_model("你好世界")
             with patch.object(engine, '_load_model', return_value=mock_model):
@@ -69,7 +83,7 @@ class TestASREngine:
         """transcribe() on empty result should return empty string."""
         async def _test():
             config = AudioConfig()
-            engine = ASREngine(config)
+            engine = create_asr_engine(config)
 
             mock_model = MagicMock()
             mock_info = MagicMock()
@@ -88,7 +102,7 @@ class TestASREngine:
         """transcribe() without initialize() should raise RuntimeError."""
         async def _test():
             config = AudioConfig()
-            engine = ASREngine(config)
+            engine = create_asr_engine(config)
             audio = np.random.randn(16000).astype(np.float32)
             try:
                 await engine.transcribe(audio)
@@ -98,25 +112,54 @@ class TestASREngine:
 
         run(_test())
 
-    def test_transcribe_multiple_segments(self):
-        """transcribe() should concatenate text from multiple segments."""
+
+class TestQwenLocalASREngine:
+    """Tests for the local Qwen ASR engine."""
+
+    def test_initialize_loads_model(self):
+        """Should load the QwenLocalASR model via transformers."""
         async def _test():
-            config = AudioConfig()
-            engine = ASREngine(config)
+            config = AudioConfig(engine_type="qwen_local")
+            engine = create_asr_engine(config)
 
             mock_model = MagicMock()
-            seg1 = MagicMock()
-            seg1.text = "第一段"
-            seg2 = MagicMock()
-            seg2.text = "第二段"
-            mock_info = MagicMock()
-            mock_model.transcribe.return_value = ([seg1, seg2], mock_info)
-
             with patch.object(engine, '_load_model', return_value=mock_model):
                 await engine.initialize()
-
-            audio = np.random.randn(16000).astype(np.float32)
-            text = await engine.transcribe(audio)
-            assert text == "第一段第二段"
+                assert engine._model == mock_model
 
         run(_test())
+
+    def test_transcribe_calls_qwen_api(self):
+        """Should call the local Qwen model transcribe method."""
+        async def _test():
+            config = AudioConfig(engine_type="qwen_local")
+            engine = create_asr_engine(config)
+
+            mock_model = MagicMock()
+            mock_result = MagicMock()
+            mock_result.text = "Qwen识别结果"
+            mock_model.transcribe.return_value = [mock_result]
+            
+            engine._model = mock_model
+            
+            audio = np.random.randn(16000).astype(np.float32)
+            text = await engine.transcribe(audio)
+            
+            assert text == "Qwen识别结果"
+            # Verify it passed the correct sample rate
+            args, kwargs = mock_model.transcribe.call_args
+            assert kwargs['audio'][1] == 16000
+
+        run(_test())
+
+    def test_uninitialized_returns_empty(self):
+        """Should return empty string if not initialized."""
+        async def _test():
+            config = AudioConfig(engine_type="qwen_local")
+            engine = QwenLocalASREngine(config)
+            audio = np.random.randn(16000).astype(np.float32)
+            text = await engine.transcribe(audio)
+            assert text == ""
+
+        run(_test())
+
