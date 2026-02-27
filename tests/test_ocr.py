@@ -1,5 +1,5 @@
 """
-Unit tests for OCREngine with mocked RapidOCR.
+Unit tests for RapidOCREngine with mocked RapidOCR.
 """
 
 import asyncio
@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from src.vision.ocr import OCREngine
+from src.vision.factory import create_vision_engine
+from src.vision.ocr import RapidOCREngine
+from src.config import VisionConfig
 
 
 def run(coro):
@@ -25,12 +27,19 @@ def run(coro):
 class TestOCREngine:
     """Tests for OCR engine with mocked backend."""
 
+    def test_factory_creates_ocr(self):
+        """Factory should return RapidOCREngine by default."""
+        config = VisionConfig()
+        engine = create_vision_engine(config)
+        assert isinstance(engine, RapidOCREngine)
+
     def test_not_initialized_returns_empty(self):
-        """extract_text() without initialization should return empty string."""
+        """extract_context() without initialization should return empty string."""
         async def _test():
-            engine = OCREngine()
+            config = VisionConfig()
+            engine = create_vision_engine(config)
             frame = np.zeros((100, 100, 4), dtype=np.uint8)
-            result = await engine.extract_text(frame)
+            result = await engine.extract_context(frame)
             assert result == ""
 
         run(_test())
@@ -38,7 +47,8 @@ class TestOCREngine:
     def test_initialize_with_rapidocr(self):
         """initialize() should load RapidOCR backend."""
         async def _test():
-            engine = OCREngine()
+            config = VisionConfig()
+            engine = create_vision_engine(config)
             mock_rapid = MagicMock()
             with patch.object(
                 engine, '_load_engine',
@@ -50,10 +60,11 @@ class TestOCREngine:
 
         run(_test())
 
-    def test_extract_text_with_rapidocr(self):
-        """extract_text() should return OCR results from RapidOCR."""
+    def test_extract_context_with_rapidocr(self):
+        """extract_context() should return OCR results from RapidOCR."""
         async def _test():
-            engine = OCREngine()
+            config = VisionConfig()
+            engine = create_vision_engine(config)
             mock_rapid = MagicMock()
             # RapidOCR returns list of [box, text, score]
             mock_rapid.return_value = (
@@ -67,29 +78,31 @@ class TestOCREngine:
 
             # Create a BGRA frame
             frame = np.zeros((100, 100, 4), dtype=np.uint8)
-            text = await engine.extract_text(frame)
+            text = await engine.extract_context(frame)
             assert "第一行文字" in text
             assert "第二行文字" in text
 
         run(_test())
 
-    def test_extract_text_empty_result(self):
-        """extract_text() should return empty string when OCR finds nothing."""
+    def test_extract_context_empty_result(self):
+        """extract_context() should return empty string when OCR finds nothing."""
         async def _test():
-            engine = OCREngine()
+            config = VisionConfig()
+            engine = create_vision_engine(config)
             mock_rapid = MagicMock()
             mock_rapid.return_value = (None, None)
             engine._engine = ("rapid", mock_rapid)
 
             frame = np.zeros((100, 100, 4), dtype=np.uint8)
-            text = await engine.extract_text(frame)
+            text = await engine.extract_context(frame)
             assert text == ""
 
         run(_test())
 
     def test_no_engine_available(self):
         """When no OCR engine is available, _load_engine returns None."""
-        engine = OCREngine()
+        config = VisionConfig()
+        engine = create_vision_engine(config)
         with patch.dict('sys.modules', {
             'rapidocr_onnxruntime': None,
             'pytesseract': None
@@ -97,10 +110,11 @@ class TestOCREngine:
             # Directly test the fallback behavior
             assert engine._engine is None
 
-    def test_extract_text_successive_calls(self):
-        """Multiple calls to extract_text should work independently."""
+    def test_extract_context_successive_calls(self):
+        """Multiple calls to extract_context should work independently."""
         async def _test():
-            engine = OCREngine()
+            config = VisionConfig()
+            engine = create_vision_engine(config)
             call_count = [0]
 
             mock_rapid = MagicMock()
@@ -117,8 +131,8 @@ class TestOCREngine:
 
             frame = np.zeros((100, 100, 4), dtype=np.uint8)
 
-            text1 = await engine.extract_text(frame)
-            text2 = await engine.extract_text(frame)
+            text1 = await engine.extract_context(frame)
+            text2 = await engine.extract_context(frame)
 
             assert "文本1" in text1
             assert "文本2" in text2

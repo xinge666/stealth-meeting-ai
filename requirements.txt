@@ -19,3 +19,5 @@ websockets
 # Testing
 pytest
 pytest-asyncio
+dashscope
+soundfile

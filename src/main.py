@@ -11,12 +11,11 @@ import sys
 from .config import AppConfig
 from .event_bus import EventBus, speech_event, screen_event
 from .audio.capture import AudioCapture
-from .audio.asr import ASREngine
+from .audio.capture import AudioCapture
 from .intelligence.intent_router import IntentRouter
 from .intelligence.context_aggregator import ContextAggregator
 from .intelligence.llm_client import LLMClient
 from .vision.screen_capture import ScreenCapture
-from .vision.ocr import OCREngine
 from .presentation.server import WebSocketServer
 
 # ---------------------------------------------------------------------------
@@ -41,13 +40,15 @@ async def main():
     logger.info("=" * 60)
 
     # ── 1. Initialize engines ──────────────────────────────────
-    asr = ASREngine(config.audio)
+    from .audio.factory import create_asr_engine
+    asr = create_asr_engine(config.audio)
     logger.info("Initializing ASR engine...")
     await asr.initialize()
 
-    ocr = OCREngine()
-    logger.info("Initializing OCR engine...")
-    await ocr.initialize()
+    from .vision.factory import create_vision_engine
+    vision = create_vision_engine(config.vision)
+    logger.info("Initializing Vision engine...")
+    await vision.initialize()
 
     llm = LLMClient(config.llm, bus)
     await llm.initialize()
@@ -75,7 +76,7 @@ async def main():
 
     # ── 4. Wire up vision pipeline ─────────────────────────────
     async def on_screen_change(frame):
-        text = await ocr.extract_text(frame)
+        text = await vision.extract_context(frame)
         if text and len(text.strip()) > 5:
             logger.info("🖥️  Screen text: %s", text[:60])
             await bus.publish(screen_event(text))
@@ -109,22 +110,34 @@ async def main():
         config.server.port
     )
 
+    # Start audio (non-blocking, uses thread internally)
+    await audio.start()
+
+    # Create tasks for blocking services
+    screen_task = asyncio.create_task(screen.start())
+    ws_task = asyncio.create_task(ws_server.start())
+
     try:
-        await asyncio.gather(
-            audio.start(),
-            screen.start(),
-            ws_server.start(),
-            shutdown_event.wait(),
-        )
+        # Wait for shutdown signal
+        await shutdown_event.wait()
     except asyncio.CancelledError:
         pass
     finally:
         logger.info("Shutting down...")
+        
+        # Stop background tasks
+        screen_task.cancel()
+        ws_task.cancel()
+        
+        # Call explicit stop methods
         await audio.stop()
         await screen.stop()
         await ws_server.stop()
         await bus.stop()
         await llm.close()
+        
+        # Wait for tasks to clean up
+        await asyncio.gather(screen_task, ws_task, return_exceptions=True)
         logger.info("Bye! 👋")
 
 

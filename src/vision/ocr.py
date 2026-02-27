@@ -7,19 +7,24 @@ Falls back to a simpler approach if not available.
 import asyncio
 import logging
 import numpy as np
+from typing import Optional
+
+from .base_vision import BaseVisionEngine
+from ..config import VisionConfig
 
 logger = logging.getLogger(__name__)
 
 
-class OCREngine:
+class RapidOCREngine(BaseVisionEngine):
     """
-    Extracts text from screen capture frames.
+    Extracts text from screen capture frames using OCR.
     """
 
-    def __init__(self):
+    def __init__(self, config: VisionConfig):
+        super().__init__(config)
         self._engine = None
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize the OCR engine."""
         loop = asyncio.get_running_loop()
         self._engine = await loop.run_in_executor(None, self._load_engine)
@@ -43,7 +48,7 @@ class OCREngine:
         logger.warning("No OCR engine available. Screen text extraction disabled.")
         return None
 
-    async def extract_text(self, frame: np.ndarray) -> str:
+    async def extract_context(self, frame: np.ndarray) -> str:
         """
         Extract text from a screen frame.
 

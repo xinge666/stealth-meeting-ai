@@ -7,23 +7,22 @@ import asyncio
 import logging
 import numpy as np
 
+from .base_asr import BaseASREngine
+from ..config import AudioConfig
+
 logger = logging.getLogger(__name__)
 
 
-class ASREngine:
+class WhisperASREngine(BaseASREngine):
     """
     Wraps faster-whisper for non-blocking speech-to-text.
     """
 
-    def __init__(self, config):
-        """
-        Args:
-            config: AudioConfig instance.
-        """
-        self.config = config
+    def __init__(self, config: AudioConfig):
+        super().__init__(config)
         self._model = None
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Load the whisper model (run in executor since it's heavy)."""
         loop = asyncio.get_running_loop()
         self._model = await loop.run_in_executor(None, self._load_model)
@@ -42,7 +41,7 @@ class ASREngine:
         Transcribe an audio segment to text.
 
         Args:
-            audio_segment: numpy float32 array of audio samples.
+            audio_segment: float32 NumPy array of audio samples.
 
         Returns:
             Recognized text string.
