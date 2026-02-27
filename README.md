@@ -41,29 +41,49 @@ Clone the repository and install dependencies:
 git clone <repo_url>
 cd meeting_assistant
 pip install -r requirements.txt
+
+#### ASR Models Download
+
+1.  **Faster-Whisper**: The system automatically downloads models. To download manually:
+    ```bash
+    # Example: download 'small' model to local folder
+    python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', download_root='./models/whisper')"
+    ```
+2.  **Qwen3-ASR (Local)**: Recommended to use `modelscope` for fast downloads in China:
+    ```bash
+    # Download Qwen3-ASR-1.7B
+    modelscope download --model Qwen/Qwen3-ASR-1.7B --local_dir ./models/Qwen3-ASR-1.7B
+    ```
+    Alternatively, using git:
+    ```bash
+    git clone https://huggingface.co/Qwen/Qwen3-ASR-1.7B ./models/Qwen3-ASR-1.7B
+    ```
+    Then update `QWEN_LOCAL_MODEL_PATH` in your `.env` to the local path.
 ```
 
 *(Note: Depending on your system, `faster-whisper` and `torch` might require specific CUDA/Metal installations for GPU acceleration. By default, it runs on CPU).*
 
 ### 3. Configuration (Environment Variables)
 
-The system uses environment variables for configuration. Set the following before running:
+The system uses environment variables for configuration. We provide a template file `.env.example`.
+
+**Setup:**
+
+1. Copy the example file: `cp .env.example .env`
+2. Edit `.env` with your actual API keys and preferences.
+
+**Key Configuration Highlights:**
+
+* **Dual LLM Setup**: The system uses two LLM configurations:
+  * `LLM_*`: High-reasoning model (e.g., DeepSeek, GPT-4o) for generating final answers.
+  * `LLM_FLASH_*`: Fast/cheap model (e.g., GPT-4o-mini, Qwen-Turbo) used by the Intent Router to filter chatter.
+* **ASR Engine**: Choose between `whisper` (local), `qwen_api` (DashScope), or `qwen_local`.
+* **Audio Device**: Set `AUDIO_DEVICE` to "BlackHole" (Mac) or your specific device name.
 
 ```bash
-# Required: Your LLM API provider
-export LLM_API_KEY="sk-your-api-key"
-
-# Optional: Switch provider (Default is DeepSeek)
-export LLM_BASE_URL="https://api.openai.com/v1"
-export LLM_MODEL="gpt-4o-mini"
-
-# Optional: Audio Device for system capture
-# If you are on Mac and installed BlackHole:
-export AUDIO_DEVICE="BlackHole" 
-
-# Optional: WebSocket Server configuration
-export SERVER_PORT="8765"
-export SERVER_HOST="0.0.0.0"
+# Example loading manually (or let the app load .env automatically)
+export LLM_API_KEY="sk-..."
+export LLM_FLASH_API_KEY="sk-..."
 ```
 
 ### 4. Running the Assistant

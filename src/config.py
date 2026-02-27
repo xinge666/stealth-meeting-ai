@@ -83,7 +83,7 @@ class AppConfig:
         # LLM config (Flash)
         config.flash_llm.api_key = os.getenv("LLM_FLASH_API_KEY", config.llm.api_key)
         config.flash_llm.base_url = os.getenv("LLM_FLASH_BASE_URL", config.llm.base_url)
-        config.flash_llm.model = os.getenv("LLM_FLASH_MODEL", "qwen-turbo")
+        config.flash_llm.model = os.getenv("LLM_FLASH_MODEL", config.llm.model)
 
         # Server config
         config.server.host = os.getenv("SERVER_HOST", config.server.host)

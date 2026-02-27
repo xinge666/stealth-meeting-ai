@@ -78,29 +78,48 @@ stealth-meeting-ai/
 git clone <repo_url>
 cd meeting_assistant
 pip install -r requirements.txt
+
+#### ASR 模型下载
+
+1.  **Faster-Whisper**: 系统会自动下载。如需提前手动下载：
+    ```bash
+    python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', download_root='./models/whisper')"
+    ```
+2.  **Qwen3-ASR (本地版)**: 推荐使用 `modelscope` 极速下载：
+    ```bash
+    # 使用 modelscope 命令行工具下载
+    modelscope download --model Qwen/Qwen3-ASR-1.7B --local_dir ./models/Qwen3-ASR-1.7B
+    ```
+    或者使用 git clone：
+    ```bash
+    git clone https://www.modelscope.cn/qwen/Qwen3-ASR-1.7B.git ./models/Qwen3-ASR-1.7B
+    ```
+    完成后，将 `.env` 中的 `QWEN_LOCAL_MODEL_PATH` 指向该本地路径。
 ```
 
 *(提示：为了获得最佳性能，`faster-whisper` 可根据您的硬件配置额外的 CUDA 环境)*
 
 ### 3. 配置环境变量
 
-系统完全由环境变量驱动。在启动前，请配置：
+系统完全由环境变量驱动。我们提供了模板文件 `.env.example`。
+
+**设置步骤：**
+
+1. 复制模板：`cp .env.example .env`
+2. 编辑 `.env` 文件，填入您的 API Key 和配置。
+
+**核心配置说明：**
+
+- **双模型架构**:
+  - `LLM_*`: 强推理模型 (如 DeepSeek, GPT-4o)，用于生成最终答案。
+  - `LLM_FLASH_*`: 轻量快速模型 (如 GPT-4o-mini, Qwen-Turbo)，用于意图识别和话语过滤，极大降低延迟与成本。
+- **ASR 引擎**: 可选 `whisper` (本地), `qwen_api` (通义千问云端), 或 `qwen_local` (本地 Qwen3-ASR)。
+- **音频设备**: Mac 用户请将 `AUDIO_DEVICE` 设置为 "BlackHole"。
 
 ```bash
-# 必填: 你的 LLM API 密钥 (默认适配 DeepSeek API)
-export LLM_API_KEY="sk-你的密钥"
-
-# 可选: 切换供应商模型 (如切换到 OpenAI)
-export LLM_BASE_URL="https://api.openai.com/v1"
-export LLM_MODEL="gpt-4o"
-
-# 可选: 指定拾音设备名称 
-# Mac 用户如果使用 BlackHole 捕获系统开会声音：
-export AUDIO_DEVICE="BlackHole" 
-
-# 可选: Server 端口设置
-export SERVER_PORT="8765"
-export SERVER_HOST="0.0.0.0"
+# 手动导出示例（或由程序自动读取 .env）
+export LLM_API_KEY="sk-..."
+export LLM_FLASH_API_KEY="sk-..."
 ```
 
 ### 4. 运行系统
