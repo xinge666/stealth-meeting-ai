@@ -2,7 +2,7 @@ import logging
 from typing import List
 from collections import deque
 from .schema import ConversationTurn
-from ..event_bus import Event, EventBus, EventType
+from ...shared.event_bus import Event, EventBus, EventType
 from ..prompts.templates import ANSWERING_PROMPT
 
 logger = logging.getLogger(__name__)

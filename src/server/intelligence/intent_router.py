@@ -8,7 +8,7 @@ Phase 2 (future): LLM micro-classifier or fine-tuned TinyBERT.
 import logging
 import re
 
-from ..event_bus import Event, EventBus, EventType, intent_event
+from ...shared.event_bus import Event, EventBus, EventType, intent_event
 
 logger = logging.getLogger(__name__)
 

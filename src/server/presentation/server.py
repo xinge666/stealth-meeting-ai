@@ -13,8 +13,9 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..config import ServerConfig
-from ..event_bus import Event, EventBus, EventType
+from ..shared.config import ServerConfig
+from ..shared.event_bus import Event, EventBus, EventType, speech_event, screen_event, audio_segment_event
+from ..shared.protocol import ClientMessage, ClientMessageType
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class WebSocketServer:
         self._history = []  # List of dicts: {"type": "question"|"answer", "text": str}
         self._current_answer_buffer = ""
         self._on_finish_callback = None
+        self._audio_buffer = [] # Buffer for incoming PCM float32 chunks
 
         self._setup_routes()
 
@@ -85,7 +87,41 @@ class WebSocketServer:
                         pass
             except WebSocketDisconnect:
                 self._active_connections.discard(websocket)
-                logger.info("Client disconnected. Total: %d", len(self._active_connections))
+                logger.info("UI Client disconnected. Total: %d", len(self._active_connections))
+
+        @self.app.websocket("/ws/client")
+        async def client_endpoint(websocket: WebSocket):
+            """Endpoint for the Edge Client (Audio/Vision capture)."""
+            await websocket.accept()
+            logger.info("Edge Client connected.")
+            try:
+                while True:
+                    data = await websocket.receive_text()
+                    try:
+                        msg = ClientMessage.from_json(data)
+                        if msg.type == ClientMessageType.AUDIO_CHUNK:
+                            # We collect chunks until AUDIO_SPEECH_END
+                            import base64
+                            import numpy as np
+                            audio_bytes = base64.b64decode(msg.payload["audio"])
+                            audio_f32 = np.frombuffer(audio_bytes, dtype=np.float32)
+                            self._audio_buffer.append(audio_f32)
+                            
+                        elif msg.type == ClientMessageType.AUDIO_SPEECH_END:
+                            if self._audio_buffer:
+                                import numpy as np
+                                segment = np.concatenate(self._audio_buffer)
+                                self._audio_buffer = []
+                                await self.bus.publish(audio_segment_event(segment))
+                                
+                        elif msg.type == ClientMessageType.SCREEN_TEXT:
+                            text = msg.payload.get("text", "")
+                            await self.bus.publish(screen_event(text))
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing client message: {e}")
+            except WebSocketDisconnect:
+                logger.info("Edge Client disconnected.")
 
     def set_on_finish_callback(self, callback):
         """Set a callback for when the user ends the meeting for analysis."""

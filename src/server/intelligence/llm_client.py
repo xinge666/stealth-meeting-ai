@@ -10,8 +10,8 @@ from typing import AsyncGenerator, Optional
 
 import httpx
 
-from ..config import LLMConfig
-from ..event_bus import EventBus, llm_chunk_event
+from ...shared.config import LLMConfig
+from ...shared.event_bus import EventBus, llm_chunk_event
 from ..prompts.templates import INTENT_ANALYSIS_PROMPT
 
 logger = logging.getLogger(__name__)

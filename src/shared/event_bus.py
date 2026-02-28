@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 class EventType(Enum):
     """All event types flowing through the system."""
     SPEECH_TEXT = auto()        # ASR recognized text
+    AUDIO_SEGMENT = auto()      # Raw audio segment for ASR
     INTENT_QUESTION = auto()   # Classified as a valid question
     SCREEN_CONTEXT = auto()    # OCR text from screen change
     LLM_RESPONSE_CHUNK = auto()  # Streaming LLM answer chunk
@@ -46,6 +47,15 @@ def speech_event(text: str, is_self: bool = False) -> Event:
         type=EventType.SPEECH_TEXT,
         data={"text": text, "is_self": is_self},
         source="audio"
+    )
+
+
+def audio_segment_event(audio_data: Any) -> Event:
+    """Create an audio segment event for ASR processing."""
+    return Event(
+        type=EventType.AUDIO_SEGMENT,
+        data={"audio": audio_data},
+        source="client_stream"
     )
 
 

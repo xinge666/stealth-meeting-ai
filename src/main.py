@@ -1,159 +1,39 @@
 """
-Main orchestrator — wires all components together and runs the async event loop.
-Entry point: python -m src.main
+Unified entry point for the Stealth Meeting AI (Client-Server Architecture).
+Usage:
+    python -m src.main --mode server
+    python -m src.main --mode client
 """
 
+import argparse
 import asyncio
-import logging
-import signal
 import sys
+import logging
 
-from .config import AppConfig
-from .event_bus import EventBus, speech_event, screen_event
-from .audio.capture import AudioCapture
-from .intelligence.intent_router import IntentRouter
-from .context import ContextManager
-from .analytics.meeting_analyzer import MeetingAnalyzer
-from .intelligence.llm_client import LLMClient
-from .vision.screen_capture import ScreenCapture
-from .presentation.server import WebSocketServer
-
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger("meeting_assistant")
-
+def parse_args():
+    parser = argparse.ArgumentParser(description="Stealth Meeting AI Launcher")
+    parser.add_argument(
+        "--mode", 
+        choices=["server", "client"], 
+        default="server",
+        help="Run as 'server' (heavy compute) or 'client' (audio/vision capture)"
+    )
+    return parser.parse_args()
 
 async def main():
-    """Bootstrap and run all system components."""
-    config = AppConfig.from_env()
-    bus = EventBus()
-
-    logger.info("=" * 60)
-    logger.info("  AI Meeting Assistant — Starting Up")
-    logger.info("=" * 60)
-
-    # ── 1. Initialize engines ──────────────────────────────────
-    from .audio.factory import create_asr_engine
-    asr = create_asr_engine(config.audio)
-    logger.info("Initializing ASR engine...")
-    await asr.initialize()
-
-    from .vision.factory import create_vision_engine
-    vision = create_vision_engine(config.vision)
-    logger.info("Initializing Vision engine...")
-    await vision.initialize()
-
-    llm = LLMClient(config.llm, bus)
-    await llm.initialize()
-
-    flash_llm = LLMClient(config.flash_llm, bus)
-    await flash_llm.initialize()
-
-    # ── 2. Wire up intelligence layer ──────────────────────────
-    context_mgr = ContextManager(bus, max_history=config.max_conversation_history)
-    intent_router = IntentRouter(bus, flash_llm, context_mgr)
-
-    # When a question is detected → ask the LLM
-    async def on_question(prompt: str, question: str):
-        logger.info("🧠 Sending to LLM: %s", question[:60])
-        await llm.ask(prompt, question)
-
-    context_mgr.set_question_callback(on_question)
-
-    # ── 3. Start WebSocket server ──────────────────────────────
-    ws_server = WebSocketServer(config.server, bus)
-
-    # Setup Review/Analysis
-    analyzer = MeetingAnalyzer(llm)
-
-    async def on_finish():
-        logger.info("🏁 Meeting finished. Generating review report...")
-        history = context_mgr.get_full_history()
-        report = await analyzer.analyze(history)
-        logger.info("✅ Report generated successfully.")
-
-    ws_server.set_on_finish_callback(on_finish)
-
-    # ── 4. Wire up audio pipeline ──────────────────────────────
-    async def on_speech_segment(audio_data):
-        logger.info("🎤 Speech segment received (%d samples)", len(audio_data))
-        text = await asr.transcribe(audio_data)
-        if text:
-            logger.info("📝 ASR: %s", text[:80])
-            await bus.publish(speech_event(text, is_self=False))
-
-    audio = AudioCapture(config.audio, on_speech_segment)
-
-    # ── 5. Wire up vision pipeline ─────────────────────────────
-    async def on_screen_change(frame):
-        text = await vision.extract_context(frame)
-        if text and len(text.strip()) > 5:
-            logger.info("🖥️  Screen text: %s", text[:60])
-            await bus.publish(screen_event(text))
-
-    screen = ScreenCapture(config.vision, on_screen_change)
-
-    # ── 6. Start the event bus ─────────────────────────────────
-    await bus.start()
-
-    # ── 7. Graceful shutdown handling ──────────────────────────
-    shutdown_event = asyncio.Event()
-
-    def _signal_handler():
-        logger.info("Shutdown signal received")
-        shutdown_event.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, _signal_handler)
-        except NotImplementedError:
-            pass  # Windows
-
-    # ── 8. Run all tasks concurrently ──────────────────────────
-    logger.info("🚀 All components initializing...")
-    logger.info(
-        "📱 Open http://0.0.0.0:%d on your phone to view answers",
-        config.server.port
-    )
-
-    # Start audio (non-blocking, uses thread internally)
-    await audio.start()
-
-    # Create tasks for blocking services
-    screen_task = asyncio.create_task(screen.start())
-    ws_task = asyncio.create_task(ws_server.start())
-
-    try:
-        # Wait for shutdown signal
-        await shutdown_event.wait()
-    except asyncio.CancelledError:
-        pass
-    finally:
-        logger.info("Shutting down...")
-        
-        # Stop background tasks
-        screen_task.cancel()
-        ws_task.cancel()
-        
-        # Call explicit stop methods
-        await audio.stop()
-        await screen.stop()
-        await ws_server.stop()
-        await bus.stop()
-        await llm.close()
-        
-        # Wait for tasks to clean up
-        await asyncio.gather(screen_task, ws_task, return_exceptions=True)
-        logger.info("Bye! 👋")
-
+    args = parse_args()
+    
+    if args.mode == "server":
+        print("🚀 Starting Compute Server...")
+        from .server.main import main as server_main
+        await server_main()
+    else:
+        print("🎙️  Starting Edge Client...")
+        from .client.main import main as client_main
+        await client_main()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        sys.exit(0)

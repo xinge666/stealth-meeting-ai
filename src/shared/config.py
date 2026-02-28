@@ -57,6 +57,7 @@ class ServerConfig:
     """WebSocket server configuration."""
     host: str = "0.0.0.0"
     port: int = 8765
+    ws_server_url: str = "ws://localhost:8765/ws/client"
 
 
 @dataclass
@@ -90,6 +91,8 @@ class AppConfig:
         port = os.getenv("SERVER_PORT")
         if port:
             config.server.port = int(port)
+        
+        config.server.ws_server_url = os.getenv("WS_SERVER_URL", config.server.ws_server_url)
 
         # Audio config
         config.audio.engine_type = os.getenv("ASR_ENGINE", config.audio.engine_type)
