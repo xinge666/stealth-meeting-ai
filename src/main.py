@@ -11,7 +11,6 @@ import sys
 from .config import AppConfig
 from .event_bus import EventBus, speech_event, screen_event
 from .audio.capture import AudioCapture
-from .audio.capture import AudioCapture
 from .intelligence.intent_router import IntentRouter
 from .context import ContextManager
 from .analytics.meeting_analyzer import MeetingAnalyzer
@@ -68,6 +67,9 @@ async def main():
 
     context_mgr.set_question_callback(on_question)
 
+    # ── 3. Start WebSocket server ──────────────────────────────
+    ws_server = WebSocketServer(config.server, bus)
+
     # Setup Review/Analysis
     analyzer = MeetingAnalyzer(llm)
 
@@ -79,7 +81,7 @@ async def main():
 
     ws_server.set_on_finish_callback(on_finish)
 
-    # ── 3. Wire up audio pipeline ──────────────────────────────
+    # ── 4. Wire up audio pipeline ──────────────────────────────
     async def on_speech_segment(audio_data):
         logger.info("🎤 Speech segment received (%d samples)", len(audio_data))
         text = await asr.transcribe(audio_data)
@@ -89,7 +91,7 @@ async def main():
 
     audio = AudioCapture(config.audio, on_speech_segment)
 
-    # ── 4. Wire up vision pipeline ─────────────────────────────
+    # ── 5. Wire up vision pipeline ─────────────────────────────
     async def on_screen_change(frame):
         text = await vision.extract_context(frame)
         if text and len(text.strip()) > 5:
@@ -97,9 +99,6 @@ async def main():
             await bus.publish(screen_event(text))
 
     screen = ScreenCapture(config.vision, on_screen_change)
-
-    # ── 5. Start WebSocket server ──────────────────────────────
-    ws_server = WebSocketServer(config.server, bus)
 
     # ── 6. Start the event bus ─────────────────────────────────
     await bus.start()

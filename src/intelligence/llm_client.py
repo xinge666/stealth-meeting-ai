@@ -12,6 +12,7 @@ import httpx
 
 from ..config import LLMConfig
 from ..event_bus import EventBus, llm_chunk_event
+from ..prompts.templates import INTENT_ANALYSIS_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -120,25 +121,7 @@ class LLMClient:
 
         history_block = f"\n[最近对话上下文]:\n{history}\n" if history else ""
 
-        prompt = f"""
-你是一个面试助手。请分析以下经过语音识别（ASR）的文本片段：
----
-"{text}"
----
-{history_block}
-任务要求：
-1. 判断这是否是一个需要你（AI）作为面试官或专家进行回答的实质性技术问题或业务问题。
-2. 结合【最近对话上下文】，如果当前文本包含指代（如“它”、“那个”、“刚才说的”），请在提取时将其还原为具体的主体。
-3. 如果包含“废话、口头禅（呃、那个、嗯）、单纯的寒暄（你好、大家好）”但同时也包含问题，请将问题提取出来并进行语言清洗（变得书面化、清晰）。
-4. 如果这只是单纯的噪音、闲聊、废话或不完整的句子，请判定为非问题。
-
-请严格返回 JSON 格式，不要有任何其他文字：
-{{
-  "is_question": boolean, // 是否是实质性问题
-  "extracted_question": string, // 结合上下文还原并清洗后的完整问题文本
-  "confidence": number // 0.0 到 1.0 的置信度
-}}
-"""
+        prompt = INTENT_ANALYSIS_PROMPT.format(text=text, history_block=history_block)
         payload = {
             "model": self.config.model,
             "messages": [{"role": "user", "content": prompt}],

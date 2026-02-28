@@ -45,7 +45,10 @@ _NOISE_RE = [re.compile(p, re.IGNORECASE) for p in _NOISE_PATTERNS]
 
 class IntentRouter:
     """
-    Classifies incoming ASR text as question or noise using LLM.
+    Classifies incoming ASR text as question or noise.
+    Uses a two-phase approach:
+      Phase 1: Fast heuristic pre-filter to skip obvious noise (saves LLM API calls).
+      Phase 2: LLM micro-classifier for precise intent detection and question extraction.
     Subscribes to SPEECH_TEXT events and publishes INTENT_QUESTION events.
     """
 
@@ -56,6 +59,19 @@ class IntentRouter:
         self.min_length = min_length
         # Register as subscriber
         self.bus.subscribe(EventType.SPEECH_TEXT, self._handle_speech)
+
+    def _is_obvious_noise(self, text: str) -> bool:
+        """
+        Fast heuristic check: returns True if the text is clearly noise
+        (pure greetings, filler words, etc.) and should skip LLM classification.
+        Only filters very short, obvious non-questions to avoid false negatives.
+        """
+        # Very short text that matches noise patterns is almost certainly not a question
+        if len(text) < 10:
+            for pattern in _NOISE_RE:
+                if pattern.match(text):
+                    return True
+        return False
 
     async def _handle_speech(self, event: Event):
         """Evaluate speech text and publish if it's a question."""
@@ -70,10 +86,15 @@ class IntentRouter:
         if len(text) < self.min_length:
             return
 
+        # Phase 1: Fast heuristic pre-filter
+        if self._is_obvious_noise(text):
+            logger.debug("⚡ [Heuristic] Skipped obvious noise: %s", text[:40])
+            return
+
+        # Phase 2: Use LLM for precise classification and extraction
         # Get recent history for coreference resolution
         history = self.context.get_recent_history(limit=5)
 
-        # Use LLM for precise classification and extraction
         result = await self.llm.analyze_intent(text, history=history)
         
         is_question = result.get("is_question", False)
@@ -92,3 +113,4 @@ class IntentRouter:
                 "❌ [LLM Intent] Filtered (conf=%.2f): %s", 
                 confidence, text[:80]
             )
+

@@ -113,10 +113,4 @@ class AppConfig:
         if threshold:
             config.vision.diff_threshold = float(threshold)
 
-        # Server config
-        config.server.host = os.getenv("SERVER_HOST", config.server.host)
-        port = os.getenv("SERVER_PORT")
-        if port:
-            config.server.port = int(port)
-
         return config

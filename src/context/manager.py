@@ -1,7 +1,9 @@
 import logging
+from typing import List
 from collections import deque
 from .schema import ConversationTurn
 from ..event_bus import Event, EventBus, EventType
+from ..prompts.templates import ANSWERING_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,7 @@ class ContextManager:
         self.bus.subscribe(EventType.SCREEN_CONTEXT, self._handle_screen)
         self.bus.subscribe(EventType.INTENT_QUESTION, self._handle_intent)
         self.bus.subscribe(EventType.LLM_RESPONSE_CHUNK, self._handle_llm_chunk)
+        self.bus.subscribe(EventType.LLM_RESPONSE_DONE, self._handle_llm_done)
 
     def set_question_callback(self, callback):
         """Set the async callback to invoke when a question needs LLM answer."""
@@ -55,22 +58,19 @@ class ContextManager:
             await self._on_question_callback(prompt, question)
 
     async def _handle_llm_chunk(self, event: Event):
-        """Buffer and record AI answers once they are finished."""
-        text = event.data.get("text", "")
-        is_done = event.data.get("is_done", False)
-        
-        # We need a place to buffer. For simplicity, let's use a temporary attribute.
-        if not hasattr(self, "_current_ai_buffer"):
-            self._current_ai_buffer = ""
-        
-        self._current_ai_buffer += text
-        
-        if is_done and self._current_ai_buffer.strip():
+        """Buffer streaming LLM response chunks."""
+        chunk = event.data.get("chunk", "")
+        if chunk:
+            self._current_ai_buffer += chunk
+
+    async def _handle_llm_done(self, event: Event):
+        """Record the completed AI answer into history."""
+        if self._current_ai_buffer.strip():
             self.conversation_history.append(ConversationTurn(
                 speaker="ai",
                 text=self._current_ai_buffer.strip()
             ))
-            self._current_ai_buffer = ""
+        self._current_ai_buffer = ""
 
     def get_full_history(self) -> List[ConversationTurn]:
         """Return the entire captured conversation turn by turn."""
@@ -95,19 +95,9 @@ class ContextManager:
 
         visual_ctx = self.latest_screen_context or "(无屏幕上下文)"
 
-        prompt = f"""[System]
-你是一个专家级的会议智囊与技术对讲决策大脑。
-请基于所提供【最新屏幕聚焦状态】以及【对话历史】，直接输出针对当前问题的极精简回答要点。
-
-[Context Sync]
-近期屏幕内容:
-{visual_ctx}
-
-[Conversation Flow]
-{chat_history}
-
-[Action Required]
-最新提问: "{latest_question}"
-
-务必做到：直接输出答案，拒绝废话，使用分点结构（1. 2. 3.）。"""
+        prompt = ANSWERING_PROMPT.format(
+            visual_ctx=visual_ctx,
+            chat_history=chat_history,
+            latest_question=latest_question
+        )
         return prompt
