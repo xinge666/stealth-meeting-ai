@@ -19,20 +19,22 @@ class AudioCapture:
     and emits completed speech segments via callback.
     """
 
-    def __init__(self, config, on_speech_segment):
+    def __init__(self, config, on_speech_chunk, on_speech_end):
         """
         Args:
             config: AudioConfig instance.
-            on_speech_segment: async callback(np.ndarray) called with
-                               complete speech segments after silence.
+            on_speech_chunk: async callback(np.ndarray) called for every 
+                             audio chunk while speech is detected.
+            on_speech_end: async callback() called when silence is detected 
+                           after a speech segment.
         """
         self.config = config
-        self.on_speech_segment = on_speech_segment
+        self.on_speech_chunk = on_speech_chunk
+        self.on_speech_end = on_speech_end
         self.sample_rate = config.sample_rate
         self.chunk_size = 512  # Silero VAD requires 512/1024/1536 at 16kHz
 
         # VAD state
-        self._speech_buffer = []
         self._is_speaking = False
         self._last_speech_time = 0.0
 
@@ -89,19 +91,19 @@ class AudioCapture:
                 if is_speech:
                     self._is_speaking = True
                     self._last_speech_time = time.time()
-                    self._speech_buffer.append(audio_f32)
+                    # Schedule async callback for the chunk
+                    if self._loop and self._running:
+                        asyncio.run_coroutine_threadsafe(
+                            self.on_speech_chunk(audio_f32), self._loop
+                        )
                 else:
                     if self._is_speaking:
-                        self._speech_buffer.append(audio_f32)
                         if time.time() - self._last_speech_time > self.config.silence_timeout:
-                            # Speech ended — emit the segment
-                            segment = np.concatenate(self._speech_buffer)
-                            self._speech_buffer = []
                             self._is_speaking = False
-                            # Schedule async callback on the event loop
+                            # Schedule end-of-speech async callback
                             if self._loop and self._running:
                                 asyncio.run_coroutine_threadsafe(
-                                    self.on_speech_segment(segment), self._loop
+                                    self.on_speech_end(), self._loop
                                 )
 
             with sd.InputStream(
