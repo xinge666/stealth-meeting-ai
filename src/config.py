@@ -24,7 +24,7 @@ class AudioConfig:
     whisper_compute_type: str = "int8"
     
     # Qwen Local specific
-    qwen_local_model_path: str = "Qwen/Qwen3-ASR-1.7B"
+    qwen_local_model_path: str = "Qwen/Qwen3-ASR-0.6B"
     qwen_local_device: str = "cuda"  # or "cpu"
     
     # Qwen API specific

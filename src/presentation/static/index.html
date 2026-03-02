@@ -254,6 +254,7 @@
 
         let ws = null;
         let currentQuestion = "";
+        let currentRag = "";
         let currentAnswer = "";
 
         function setStatus(online) {
@@ -268,9 +269,17 @@
                     break;
                 case 'question':
                     currentQuestion = msg.text;
+                    currentRag = "";
                     currentAnswer = "";
                     appendText(llmRawEl, "\n[Q] " + msg.text + "\n");
                     updateQAColumn(true);
+                    break;
+                case 'rag':
+                    if (msg.documents && msg.documents.length > 0) {
+                        const docs = msg.documents.map(d => Object.keys(d).includes('source') ? d.source : '?').join(', ');
+                        currentRag = "[📚 检索到关联文档: " + docs + "]\n";
+                    }
+                    updateQAColumn(false);
                     break;
                 case 'chunk':
                     currentAnswer += msg.text;
@@ -305,8 +314,9 @@
 
         function updateQAColumn(newQuestion) {
             const qStr = currentQuestion ? "Q: " + currentQuestion + "\n" : "";
+            const ragStr = currentRag ? currentRag : "";
             const aStr = currentAnswer ? "A: " + currentAnswer : "";
-            qaEl.textContent = qStr + aStr;
+            qaEl.textContent = qStr + ragStr + aStr;
             checkPaging(qaEl);
             qaEl.parentElement.scrollTop = qaEl.parentElement.scrollHeight;
         }

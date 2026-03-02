@@ -22,6 +22,7 @@ class EventType(Enum):
     SPEECH_TEXT = auto()        # ASR recognized text
     INTENT_QUESTION = auto()   # Classified as a valid question
     SCREEN_CONTEXT = auto()    # OCR text from screen change
+    RAG_CONTEXT = auto()       # Retrieved RAG context documents
     LLM_RESPONSE_CHUNK = auto()  # Streaming LLM answer chunk
     LLM_RESPONSE_DONE = auto()   # LLM answer complete
     SYSTEM_STATUS = auto()     # System status updates
@@ -73,6 +74,14 @@ def llm_chunk_event(chunk: str, is_done: bool = False) -> Event:
         type=EventType.LLM_RESPONSE_DONE if is_done else EventType.LLM_RESPONSE_CHUNK,
         data={"chunk": chunk},
         source="llm"
+    )
+
+def rag_event(documents: list) -> Event:
+    """Create a RAG context event."""
+    return Event(
+        type=EventType.RAG_CONTEXT,
+        data={"documents": documents},
+        source="rag"
     )
 
 

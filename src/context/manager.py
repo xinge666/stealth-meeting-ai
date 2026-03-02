@@ -1,4 +1,5 @@
 import logging
+from typing import List
 from collections import deque
 from .schema import ConversationTurn
 from ..event_bus import Event, EventBus, EventType

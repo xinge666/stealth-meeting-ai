@@ -43,6 +43,7 @@ class WebSocketServer:
         self.bus.subscribe(EventType.LLM_RESPONSE_DONE, self._handle_done)
         self.bus.subscribe(EventType.INTENT_QUESTION, self._handle_question)
         self.bus.subscribe(EventType.SPEECH_TEXT, self._handle_speech)
+        self.bus.subscribe(EventType.RAG_CONTEXT, self._handle_rag)
 
     def _setup_routes(self):
         """Configure FastAPI routes."""
@@ -145,6 +146,15 @@ class WebSocketServer:
             "type": "done",
         })
 
+    async def _handle_rag(self, event: Event):
+        """Broadcast RAG context."""
+        docs = event.data.get("documents", [])
+        if docs:
+            await self._broadcast({
+                "type": "rag",
+                "documents": docs
+            })
+
     async def start(self):
         """Start the uvicorn server."""
         import uvicorn
@@ -155,12 +165,12 @@ class WebSocketServer:
             log_level="warning",
             access_log=False,
         )
-        server = uvicorn.Server(config)
+        self.server_instance = uvicorn.Server(config)
         logger.info(
             "WebSocket server starting on %s:%d",
             self.config.host, self.config.port
         )
-        await server.serve()
+        await self.server_instance.serve()
 
     async def stop(self):
         """Close all connections."""
@@ -170,4 +180,6 @@ class WebSocketServer:
             except Exception:
                 pass
         self._active_connections.clear()
+        if hasattr(self, "server_instance"):
+            self.server_instance.should_exit = True
         logger.info("WebSocket server stopped")

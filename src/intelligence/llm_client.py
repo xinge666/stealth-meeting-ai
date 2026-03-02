@@ -153,15 +153,26 @@ class LLMClient:
             data = response.json()
             content = data["choices"][0]["message"]["content"]
             
-            # Extract JSON from potential markdown blocks
-            json_str = content.strip()
-            if "```json" in json_str:
-                json_str = json_str.split("```json")[1].split("```")[0].strip()
-            elif "```" in json_str:
-                json_str = json_str.split("```")[1].split("```")[0].strip()
+            # Extract JSON from potential markdown blocks or garbage text
+            content_str = content.strip()
             
+            # Simple robust fallback: find first { and last }
+            start_idx = content_str.find('{')
+            end_idx = content_str.rfind('}')
+            
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = content_str[start_idx:end_idx+1]
+            else:
+                json_str = content_str
+                
             result = json.loads(json_str)
-            return result
+            
+            # Ensure required keys exist
+            return {
+                "is_question": bool(result.get("is_question", False)),
+                "extracted_question": str(result.get("extracted_question", "")),
+                "confidence": float(result.get("confidence", 0.0))
+            }
         except Exception as e:
-            logger.error("Intent analysis LLM error: %s", e)
+            logger.error("Intent analysis LLM error: [%s] %s. Raw content: %s", type(e).__name__, e, content if 'content' in locals() else 'None')
             return {"is_question": False, "extracted_question": "", "confidence": 0.0}

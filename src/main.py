@@ -7,6 +7,7 @@ import asyncio
 import logging
 import signal
 import sys
+import os
 
 from .config import AppConfig
 from .event_bus import EventBus, speech_event, screen_event
@@ -16,6 +17,7 @@ from .intelligence.intent_router import IntentRouter
 from .context import ContextManager
 from .analytics.meeting_analyzer import MeetingAnalyzer
 from .intelligence.llm_client import LLMClient
+from .intelligence.rag import RAGEngine
 from .vision.screen_capture import ScreenCapture
 from .presentation.server import WebSocketServer
 
@@ -57,14 +59,34 @@ async def main():
     flash_llm = LLMClient(config.flash_llm, bus)
     await flash_llm.initialize()
 
+    # Initialize RAG Engine
+    rag_engine = RAGEngine(docs_dir=os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "docs"))
+    await rag_engine.initialize()
+
     # ── 2. Wire up intelligence layer ──────────────────────────
     context_mgr = ContextManager(bus, max_history=config.max_conversation_history)
     intent_router = IntentRouter(bus, flash_llm, context_mgr)
 
     # When a question is detected → ask the LLM
     async def on_question(prompt: str, question: str):
-        logger.info("🧠 Sending to LLM: %s", question[:60])
-        await llm.ask(prompt, question)
+        logger.info("🧠 Sending question to RAG & LLM: %s", question[:60])
+        
+        # 1. Retrieve RAG Context
+        retrieved_docs = await rag_engine.search(question, top_k=3)
+        
+        if retrieved_docs:
+            logger.info("📚 Retrieved %d relevant documents", len(retrieved_docs))
+            from .event_bus import rag_event
+            await bus.publish(rag_event(retrieved_docs))
+            
+            # Augment the prompt with RAG context
+            rag_context_str = "\n".join([f"- [{doc['source']}]: {doc['text']}" for doc in retrieved_docs])
+            augmented_prompt = prompt + f"\n\n[RAG Retrieved Context]\n{rag_context_str}"
+        else:
+            augmented_prompt = prompt
+            
+        # 2. Ask LLM
+        await llm.ask(augmented_prompt, question)
 
     context_mgr.set_question_callback(on_question)
 
@@ -77,6 +99,7 @@ async def main():
         report = await analyzer.analyze(history)
         logger.info("✅ Report generated successfully.")
 
+    ws_server = WebSocketServer(config.server, bus)
     ws_server.set_on_finish_callback(on_finish)
 
     # ── 3. Wire up audio pipeline ──────────────────────────────
@@ -98,8 +121,7 @@ async def main():
 
     screen = ScreenCapture(config.vision, on_screen_change)
 
-    # ── 5. Start WebSocket server ──────────────────────────────
-    ws_server = WebSocketServer(config.server, bus)
+    # ── 5. Start WebSocket server (instance created above) ──────────────────
 
     # ── 6. Start the event bus ─────────────────────────────────
     await bus.start()
@@ -157,4 +179,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+
