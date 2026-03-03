@@ -172,3 +172,5 @@ src/audio/Qwen3-ASR/
 .env.local
 .env.*.local
 .DS_Store
+
+*.pkl
