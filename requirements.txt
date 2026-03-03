@@ -1,11 +1,14 @@
-# Core
-python-dotenv
-numpy
+# Core & CUDA Support
+# Using CUDA 12.4 by default. For other versions, change 'cu124' in the URL (e.g. cu118).
+--extra-index-url https://download.pytorch.org/whl/cu126
 torch
 torchaudio
+python-dotenv
+numpy
 sounddevice
 faster-whisper
-httpx
+qwen-asr
+openai
 
 # Vision
 mss
@@ -22,3 +25,5 @@ pytest
 pytest-asyncio
 dashscope
 soundfile
+
+sentence-transformers

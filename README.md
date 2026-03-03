@@ -16,7 +16,7 @@ An AI-powered real-time meeting assistant that acts as your private co-pilot dur
 * **Core:** Python 3.10+, `asyncio` Event Bus
 * **Audio:** `sounddevice`, Silero VAD (Voice Activity Detection), `faster-whisper` (Streaming ASR)
 * **Vision:** `mss` (Screen Capture), OpenCV (Frame Diff), `rapidocr-onnxruntime` (OCR)
-* **Intelligence:** `httpx` (Async LLM streaming via OpenAI-compatible APIs)
+* **Intelligence:** `openai` (Async LLM streaming via OpenAI-compatible SDK)
 * **Presentation:** FastAPI, WebSockets, Vanilla JS (Dark AMOLED mobile interface)
 
 ## 🚀 Getting Started

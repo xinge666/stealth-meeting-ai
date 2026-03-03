@@ -8,7 +8,7 @@ import json
 import logging
 from typing import AsyncGenerator, Optional
 
-import httpx
+from openai import AsyncOpenAI
 
 from ..config import LLMConfig
 from ..event_bus import EventBus, llm_chunk_event
@@ -18,31 +18,28 @@ logger = logging.getLogger(__name__)
 
 class LLMClient:
     """
-    Async streaming LLM client using httpx + SSE.
+    Async streaming LLM client using OpenAI SDK.
     Publishes response chunks to the event bus.
     """
 
     def __init__(self, config: LLMConfig, event_bus: EventBus):
         self.config = config
         self.bus = event_bus
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: Optional[AsyncOpenAI] = None
 
     async def initialize(self):
-        """Create the HTTP client."""
-        self._client = httpx.AsyncClient(
+        """Create the OpenAI client."""
+        self._client = AsyncOpenAI(
             base_url=self.config.base_url,
-            headers={
-                "Authorization": f"Bearer {self.config.api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=httpx.Timeout(self.config.timeout, connect=10.0),
+            api_key=self.config.api_key,
+            timeout=self.config.timeout,
         )
-        logger.info("LLM client initialized (model=%s)", self.config.model)
+        logger.info("LLM client initialized (model=%s, base_url=%s)", self.config.model, self.config.base_url)
 
     async def close(self):
-        """Close the HTTP client."""
+        """Close the OpenAI client."""
         if self._client:
-            await self._client.aclose()
+            await self._client.close()
 
     async def ask(self, prompt: str, question: str = "") -> str:
         """
@@ -58,44 +55,25 @@ class LLMClient:
             await self.bus.publish(llm_chunk_event(placeholder, is_done=True))
             return placeholder
 
-        payload = {
-            "model": self.config.model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": self.config.max_tokens,
-            "temperature": self.config.temperature,
-            "stream": True,
-        }
-
         full_response = []
         try:
-            async with self._client.stream(
-                "POST", "/chat/completions", json=payload
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_str)
-                        delta = data["choices"][0].get("delta", {})
-                        chunk = delta.get("content", "")
-                        if chunk:
-                            full_response.append(chunk)
-                            await self.bus.publish(llm_chunk_event(chunk))
-                    except (json.JSONDecodeError, KeyError, IndexError) as e:
-                        logger.debug("SSE parse skip: %s", e)
-                        continue
+            stream = await self._client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": "Directly provide the answer without any internal thought process or <think> tags."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+                stream=True,
+            )
 
-        except httpx.HTTPStatusError as e:
-            error_msg = f"[LLM Error] HTTP {e.response.status_code}"
-            logger.error(error_msg)
-            await self.bus.publish(llm_chunk_event(error_msg, is_done=True))
-            return error_msg
+            async for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    full_response.append(text)
+                    await self.bus.publish(llm_chunk_event(text))
+
         except Exception as e:
             error_msg = f"[LLM Error] {type(e).__name__}: {e}"
             logger.error(error_msg)
@@ -139,19 +117,18 @@ class LLMClient:
   "confidence": number // 0.0 到 1.0 的置信度
 }}
 """
-        payload = {
-            "model": self.config.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 150,
-            "temperature": 0.1,
-            "stream": False,
-        }
-
         try:
-            response = await self._client.post("/chat/completions", json=payload)
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
+            response = await self._client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": "Directly provide the answer without any internal thought process or <think> tags."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=500,
+                temperature=0.1,
+                stream=False,
+            )
+            content = response.choices[0].message.content
             
             # Extract JSON from potential markdown blocks or garbage text
             content_str = content.strip()
@@ -174,5 +151,5 @@ class LLMClient:
                 "confidence": float(result.get("confidence", 0.0))
             }
         except Exception as e:
-            logger.error("Intent analysis LLM error: [%s] %s. Raw content: %s", type(e).__name__, e, content if 'content' in locals() else 'None')
+            logger.error("Intent analysis LLM error: [%s] %s", type(e).__name__, e)
             return {"is_question": False, "extracted_question": "", "confidence": 0.0}

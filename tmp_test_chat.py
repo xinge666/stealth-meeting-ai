@@ -1,50 +1,70 @@
-import asyncio
-import sys
 import os
-from pathlib import Path
+import asyncio
+from openai import AsyncOpenAI
+from dotenv import load_dotenv
 
-# Add src to path
-project_root = Path(r"c:\Users\67091\Desktop\gjx_work\stealth-meeting-ai")
-sys.path.append(str(project_root.absolute()))
+load_dotenv()
 
-from src.config import AppConfig
-from src.event_bus import EventBus, EventType
-from src.intelligence.llm_client import LLMClient
+async def test_llm(name, base_url, api_key, model):
+    print(f"\n--- Testing {name} ---")
+    print(f"Base URL: {base_url}")
+    print(f"Model: {model}")
+    
+    if not base_url or not model:
+        print(f"[FAIL] {name} is missing base_url or model configuration.")
+        return
 
-async def handle_chunk(event):
-    if event.type == EventType.LLM_RESPONSE_CHUNK:
-        print(event.data["chunk"], end="", flush=True)
-    elif event.type == EventType.LLM_RESPONSE_DONE:
-        print("\n\n[Response Done]")
-
-async def test_chat():
-    config = AppConfig.from_env()
-    bus = EventBus()
-    
-    # Subscribe to LLM chunks to see streaming output
-    bus.subscribe(EventType.LLM_RESPONSE_CHUNK, handle_chunk)
-    bus.subscribe(EventType.LLM_RESPONSE_DONE, handle_chunk)
-    
-    client = LLMClient(config.llm, bus)
-    
-    print(f"Testing Model: {config.llm.model}")
-    print(f"Base URL: {config.llm.base_url}")
-    print("-" * 30)
-    print("User: hello")
-    print("Assistant: ", end="", flush=True)
-    
-    await bus.start()
-    await client.initialize()
+    client = AsyncOpenAI(
+        base_url=base_url,
+        api_key=api_key
+    )
     
     try:
-        response = await client.ask("hello")
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "Directly provide the answer without any internal thought process or <think> tags."},
+                {"role": "user", "content": "Testing. Please reply with 'Successfully connected'."}
+            ],
+            max_tokens=500,
+            stream=False
+        )
+        # print(f"DEBUG: Complete response: {response}")
+        
+        if not response.choices:
+            print(f"[FAIL] Response was empty (no choices). Full response: {response}")
+            return
+            
+        reply = response.choices[0].message.content
+        if reply:
+            print(f"[OK] Success! Response: '{reply.strip()}'")
+        else:
+            print(f"[WARN] Success but empty content!")
+            print(f"Finish Reason: {response.choices[0].finish_reason}")
+            print(f"Message: {response.choices[0].message}")
+    except Exception as e:
+        print(f"[ERROR] Error connecting to {name}: {e}")
     finally:
         await client.close()
-        await bus.stop()
+
+async def main():
+    print("Testing LLM API Keys from .env...\n")
+    
+    # Test primary LLM
+    await test_llm(
+        name="Primary LLM (LLM_API_KEY)",
+        base_url=os.getenv("LLM_BASE_URL"),
+        api_key=os.getenv("LLM_API_KEY", ""),
+        model=os.getenv("LLM_MODEL")
+    )
+    
+    # Test Flash LLM
+    await test_llm(
+        name="Flash LLM (LLM_FLASH_API_KEY)",
+        base_url=os.getenv("LLM_FLASH_BASE_URL"),
+        api_key=os.getenv("LLM_FLASH_API_KEY", ""),
+        model=os.getenv("LLM_FLASH_MODEL")
+    )
 
 if __name__ == "__main__":
-    # Ensure logs don't clutter output
-    import logging
-    logging.basicConfig(level=logging.WARNING)
-    
-    asyncio.run(test_chat())
+    asyncio.run(main())

@@ -157,24 +157,27 @@ async def main():
     try:
         # Wait for shutdown signal
         await shutdown_event.wait()
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, KeyboardInterrupt):
         pass
     finally:
         logger.info("Shutting down...")
         
-        # Stop background tasks
-        screen_task.cancel()
-        ws_task.cancel()
-        
-        # Call explicit stop methods
+        # Call explicit stop methods first so tasks can gracefully exit
         await audio.stop()
         await screen.stop()
         await ws_server.stop()
         await bus.stop()
         await llm.close()
+        await flash_llm.close()
         
-        # Wait for tasks to clean up
-        await asyncio.gather(screen_task, ws_task, return_exceptions=True)
+        # Wait for tasks to clean up (with timeout to prevent hanging)
+        done, pending = await asyncio.wait([screen_task, ws_task], timeout=5.0)
+        if pending:
+            logger.warning("Tasks did not finish gracefully, forcing cancel...")
+            for p in pending:
+                p.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            
         logger.info("Bye! 👋")
 
 
